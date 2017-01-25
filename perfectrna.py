@@ -63,7 +63,7 @@ if len(s) % 2 == 0:
 # so that a lone C is an A.
 
 # Seed with single bases.
-almostPerfect = set((i, i + 1) for i in range(0, len(s) - 1))
+almostPerfect = set((i, i + 1) for i in range(0, len(s)))
 
 # For each possible length...
 for n in range(3, len(s) + 1, 2):
