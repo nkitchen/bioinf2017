@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import collections
 import fileinput
 import sys
 
@@ -17,35 +18,47 @@ complement = {
 #     | B P B'
 #     | P P
 
-# Contains (i, j) if s[i:j] is perfect
-perfect = set()
+# perfectEnds[i] contains j if s[i:j] is perfect.
+# perfectStarts[j] contains i if s[i:j] is perfect.
+perfectEnds = collections.defaultdict(set)
+perfectStarts = collections.defaultdict(set)
+
+queue = collections.OrderedDict()
 
 # Seed with B B'.
 for i in range(0, len(s) - 1):
-    j = i + 1
-    if s[j] == complement[s[i]]:
-        perfect.add((i, i + 2))
+    if s[i + 1] == complement[s[i]]:
+        j = i + 2
+        perfectEnds[i].add(j)
+        perfectStarts[j].add(i)
+        queue[(i, j)] = True
 
-# For each possible length...
-for n in range(4, len(s) + 1, 2):
-    # Check for B P B' of length n.
-    # => P has length n - 2.
-    for i in range(0, len(s) - n + 1):
-        if (s[i] == complement[s[i + n - 1]] and
-            (i + 1, i + n - 1) in perfect):
-            perfect.add((i, i + n))
+while queue:
+    (i, j), _ = queue.popitem(last=False)
 
-    # Check for P P of length n.
-    for i in range(0, len(s) - n + 1):
-        for k in range(2, n - 1, 2):
-            # First P has length k.
-            # Second P has length n - k.
-            if ((i, i + k) in perfect and
-                (i + k, i + n) in perfect):
-                perfect.add((i, i + n))
+    # Try expanding with B P B'.
+    if 0 < i and j < len(s):
+        if s[i - 1] == complement[s[j]]:
+            ii = i - 1
+            jj = j + 1
+            perfectEnds[ii].add(jj)
+            perfectStarts[jj].add(ii)
+            queue[(ii, jj)] = True
+
+    # Try expanding with P P, where this is the first P.
+    for k in perfectEnds[j]:
+        perfectEnds[i].add(k)
+        perfectStarts[k].add(i)
+        queue[(i, k)] = True
+
+    # Try expanding with P P, where this is the second P.
+    for h in perfectStarts[i]:
+        perfectStarts[j].add(h)
+        perfectEnds[h].add(j)
+        queue[(h, j)] = True
 
 if len(s) % 2 == 0:
-    if (0, len(s)) in perfect:
+    if len(s) in perfectEnds[0]:
         print("perfect")
     else:
         print("imperfect")
@@ -62,36 +75,42 @@ if len(s) % 2 == 0:
 # The code is simpler if we treat single bases as almost perfect,
 # so that a lone C is an A.
 
-# Seed with single bases.
-almostPerfect = set((i, i + 1) for i in range(0, len(s)))
+almostPerfectEnds = collections.defaultdict(set)
+almostPerfectStarts = collections.defaultdict(set)
 
-# For each possible length...
-for n in range(3, len(s) + 1, 2):
-    # Check for B A B' of length n.
-    for i in range(0, len(s) - n + 1):
-        if (s[i] == complement[s[i + n - 1]] and
-            (i + 1, i + n - 1) in almostPerfect):
-            almostPerfect.add((i, i + n))
+for i in range(0, len(s)):
+    almostPerfectEnds[i].add(i + 1)
+    almostPerfectStarts[i + 1].add(i)
+    queue[(i, i + 1)] = True
 
-    for i in range(0, len(s) - n + 1):
-        # Check for A P of length n.
-        for k in range(1, n - 1, 2):
-            # A has length k.
-            # P has length n - k.
-            if ((i, i + k) in almostPerfect and
-                (i + k, i + n) in perfect):
-                almostPerfect.add((i, i + n))
+while queue:
+    (i, j), _ = queue.popitem(last=False)
 
-        # Check for P A of length n.
-        for k in range(2, n, 2):
-            # P has length k.
-            # A has length n - k.
-            if ((i, i + k) in perfect and
-                (i + k, i + n) in almostPerfect):
-                almostPerfect.add((i, i + n))
+    # Try expanding with B A B'.
+    if 0 < i and j < len(s):
+        if s[i - 1] == complement[s[j]]:
+            ii = i - 1
+            jj = j + 1
+            almostPerfectEnds[ii].add(jj)
+            almostPerfectStarts[jj].add(ii)
+            queue[(ii, jj)] = True
 
-if (0, len(s)) in almostPerfect:
+    # Try expanding with A P.
+    for k in perfectEnds[j]:
+        almostPerfectEnds[i].add(k)
+        almostPerfectStarts[k].add(i)
+        queue[(i, k)] = True
+
+    # Try expanding with P A.
+    for h in perfectStarts[i]:
+        almostPerfectStarts[j].add(h)
+        almostPerfectEnds[h].add(j)
+        queue[(h, j)] = True
+
+if len(s) in almostPerfectEnds[0]:
     print("almost perfect")
 else:
     print("imperfect")
+
+# vim: set shiftwidth=4 :
 
