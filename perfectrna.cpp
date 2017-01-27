@@ -172,12 +172,7 @@ int main() {
    //cout << "perfectEnds " << perfectEnds << endl;
    //cout << "perfectStarts " << perfectStarts << endl;
 
-   unordered_map<size_t, unordered_set<size_t> > almostPerfectEnds;
-   unordered_map<size_t, unordered_set<size_t> > almostPerfectStarts;
-
    for (size_t i = 0; i < s.size(); ++i) {
-      almostPerfectEnds[i].insert(i + 1);
-      almostPerfectStarts[i + 1].insert(i);
       queue.insert(substring(i, i + 1));
    }
 
@@ -187,11 +182,14 @@ int main() {
       size_t j = ij.second;
       //cout << "pop " << i << ":" << j << endl;
 
+      if (i == 0 && j == s.size()) {
+         cout << "almost perfect" << endl;
+         return 0;
+      }
+
       // Try expanding with B A B'.
       if (0 < i && j < s.size() &&
             s[i - 1] == complement[s[j]]) {
-         almostPerfectEnds[i - 1].insert(j + 1);
-         almostPerfectStarts[j + 1].insert(i - 1);
          queue.insert(substring(i - 1, j + 1));
       }
 
@@ -199,8 +197,6 @@ int main() {
       for (auto it = perfectEnds[j].begin();
            it != perfectEnds[j].end(); ++it) {
          size_t k = *it;
-         almostPerfectEnds[i].insert(k);
-         almostPerfectStarts[k].insert(i);
          queue.insert(substring(i, k));
       }
 
@@ -208,20 +204,10 @@ int main() {
       for (auto it = perfectStarts[i].begin();
            it != perfectStarts[i].end(); ++it) {
          size_t h = *it;
-         almostPerfectStarts[j].insert(h);
-         almostPerfectEnds[h].insert(j);
          queue.insert(substring(h, j));
       }
-
-      //cout << "ends " << almostPerfectEnds << endl;
-      //cout << "starts " << almostPerfectStarts << endl;
    }
 
-   if (almostPerfectEnds[0].find(s.size()) !=
-       almostPerfectEnds[0].end()) {
-      cout << "almost perfect" << endl;
-   } else {
-      cout << "imperfect" << endl;
-   }
+   cout << "imperfect" << endl;
    return 0;
 }
