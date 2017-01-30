@@ -2,23 +2,39 @@
 #include <cassert>
 #include <deque>
 #include <iostream>
+#include <iterator>
+#include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
-using std::cin;
-using std::cout;
-using std::deque;
-using std::endl;
-using std::ostream;
-using std::set;
-using std::string;
-using std::unordered_map;
-using std::unordered_set;
+using namespace std;
 
-typedef std::pair<size_t, size_t> substring;
+// A maximal perfect substring is a perfect substring
+// that is not bracketed by a complementary pair of bases,
+// that is., it does not match B P B'.
+// A maximal perfect range (MPR) consists of the indices
+// of a maximal perfect substring.
+struct mpr {
+   size_t begin;
+   size_t end;  // exclusive
+   // The stem length of a MPR is the number of matching bases
+   // at the beginning and end of the MPS.  In a picture of the
+   // secondary structure, the MPS may branch, and the stem is
+   // the part below the first branching point.
+   size_t stem;
+};
+
+bool
+operator<(mpr const & r, mpr const & s)
+{
+   auto tr = make_tuple(r.begin, r.begin + r.stem, r.end);
+   auto ts = make_tuple(s.begin, s.begin + s.stem, s.end);
+   return tr < ts;
+}
 
 template<class T>
 class fifo_set {
@@ -100,64 +116,176 @@ int main() {
    //     | B P B'
    //     | P P
 
-   // perfectEnds[i] contains j if s[i:j] is perfect.
-   // perfectStarts[j] contains i if s[i:j] is perfect.
-   unordered_map<size_t, unordered_set<size_t> > perfectEnds;
-   unordered_map<size_t, unordered_set<size_t> > perfectStarts;
+   // MPRs indexed by the beginning indices of their stems and crowns
+   // (The crown is the substring that is not part of the stem.)
+   map<size_t, set<mpr> > maxPerfByBegin;
+   // MPRs indexed by their ending indices of their stems and crowns
+   map<size_t, set<mpr> > maxPerfByEnd;
 
-   fifo_set<substring> queue;
+   fifo_set<mpr> queue;
 
-   // Seed with B B'.
+   // Seed with simple MPRs (no branching, just B+ (B+)').
    for (size_t i = 0; i <= s.size() - 2; ++i) {
-      if (s[i + 1] == complement[s[i]]) {
-         perfectEnds[i].insert(i + 2);
-         perfectStarts[i + 2].insert(i);
-         queue.insert(substring(i, i + 2));
+      if (s[i] == complement[s[i + 1]]) {
+         size_t j = i, k = i + 1;
+         while (0 < j && k < s.size() - 1) {
+            if (s[j - 1] == complement[s[k + 1]]) {
+               --j;
+               ++k;
+            } else {
+               break;
+            }
+         }
+         size_t n = k + 1 - j;
+         mpr x{.begin = j, .end = k + 1, .stem = n / 2};
+         maxPerfByBegin[x.begin].insert(x);
+         maxPerfByEnd[x.end].insert(x);
+         if (x.stem > 0) {
+            maxPerfByBegin[x.begin + x.stem].insert(x);
+            maxPerfByEnd[x.end - x.stem].insert(x);
+         }
+         queue.insert(x);
       }
    }
 
    while (!queue.empty()) {
-      substring ij = queue.pop_front();
-      size_t i = ij.first;
-      size_t j = ij.second;
+      mpr x = queue.pop_front();
 
-      // Try expanding with B P B'.
-      if (0 < i && j < s.size() &&
-            s[i - 1] == complement[s[j]]) {
-         perfectEnds[i - 1].insert(j + 1);
-         perfectStarts[j + 1].insert(i - 1);
-         queue.insert(substring(i - 1, j + 1));
+      // The MPR represents multiple perfect substrings.
+      // Each one corresponds to stripping off a different length
+      // of the stem.
+
+      // For one of the perfect substrings from x to be immediately followed
+      // by another perfect substring from another MPR y,
+      // there must be some lengths m and n,
+      // with 0 <= m <= x.stem and 0 <= n <= y.stem,
+      // such that x.end - m == y.begin + n.
+
+      // y.begin == x.end - m - n
+      // min: y.begin >= x.end - x.stem - y.stem
+      //      y.begin + y.stem >= x.end - x.stem
+      // max: y.begin <= x.end
+
+      for (auto it = maxPerfByBegin.lower_bound(x.end - x.stem);
+           it != maxPerfByBegin.end();
+           ++it) {
+         for (auto jt = it->second.begin();
+              jt != it->second.end();
+              ++jt) {
+            mpr y = *jt;
+            if (y.begin > x.end) {
+               break;
+            }
+
+            //    ] x.end - x.stem
+            //          ] x.end
+            // CCCSSSSSS
+            //      i
+            //      [ m ]
+            //   [n ]
+            //   SSSSSCCCCC...
+            //   [ y.begin
+            //        [ y.begin + y.stem
+            for (size_t i = max(x.end - x.stem, y.begin);
+                 i < min(x.end, y.begin + y.stem);
+                 ++i) {
+               size_t m = x.end - i;
+               size_t n = i - y.begin;
+
+               // Expand stem.
+               size_t u = x.begin + m;
+               size_t v = y.end - n - 1;
+               size_t k = 0;
+               while (0 < u && v < s.size() - 1) {
+                  if (s[u - 1] == complement[s[v + 1]]) {
+                     --u;
+                     ++v;
+                     ++k;
+                  } else {
+                     break;
+                  }
+               }
+               mpr z{.begin = u, .end = v + 1, .stem = k};
+               maxPerfByBegin[z.begin].insert(z);
+               maxPerfByEnd[z.end].insert(z);
+               if (z.stem > 0) {
+                  maxPerfByBegin[z.begin + z.stem].insert(z);
+                  maxPerfByEnd[z.end - z.stem].insert(z);
+               }
+               queue.insert(z);
+            }
+         }
       }
 
-      // Try expanding with P P, where this is the first P.
-      for (auto it = perfectEnds[j].begin();
-           it != perfectEnds[j].end(); ++it) {
-         size_t k = *it;
-         perfectEnds[i].insert(k);
-         perfectStarts[k].insert(i);
-         queue.insert(substring(i, k));
-      }
+      for (auto it = make_reverse_iterator(
+               maxPerfByEnd.upper_bound(x.begin + x.stem));
+           it != maxPerfByEnd.rend();
+           ++it) {
+         for (auto jt = it->second.begin();
+              jt != it->second.end();
+              ++jt) {
+            mpr w = *jt;
+            if (w.end < x.begin) {
+               break;
+            }
 
-      // Try expanding with P P, where this is the second P.
-      for (auto it = perfectStarts[i].begin();
-           it != perfectStarts[i].end(); ++it) {
-         size_t h = *it;
-         perfectStarts[j].insert(h);
-         perfectEnds[h].insert(j);
-         queue.insert(substring(h, j));
+            //    ] w.end - w.stem
+            //          ] w.end
+            // CCCSSSSSS
+            //      i
+            //      [ m ]
+            //   [n ]
+            //   SSSSSCCCCC...
+            //   [ x.begin
+            //        [ x.begin + x.stem
+            for (size_t i = max(w.end - w.stem, x.begin);
+                 i < min(w.end, x.begin + x.stem);
+                 ++i) {
+               size_t m = w.end - i;
+               size_t n = i - x.begin;
+
+               // Expand stem.
+               size_t u = w.begin + m;
+               size_t v = x.end - n - 1;
+               size_t k = 0;
+               while (0 < u && v < s.size() - 1) {
+                  if (s[u - 1] == complement[s[v + 1]]) {
+                     --u;
+                     ++v;
+                     ++k;
+                  } else {
+                     break;
+                  }
+               }
+               mpr z{.begin = u, .end = v + 1, .stem = k};
+               maxPerfByBegin[z.begin].insert(z);
+               maxPerfByEnd[z.end].insert(z);
+               if (z.stem > 0) {
+                  maxPerfByBegin[z.begin + z.stem].insert(z);
+                  maxPerfByEnd[z.end - z.stem].insert(z);
+               }
+               queue.insert(z);
+            }
+         }
       }
    }
 
    if (s.size() % 2 == 0) {
-      if (perfectEnds[0].find(s.size()) !=
-          perfectEnds[0].end()) {
-         cout << "perfect" << endl;
-      } else {
-         cout << "imperfect" << endl;
+      for (auto it = maxPerfByBegin[0].begin();
+           it != maxPerfByBegin[0].end();
+           ++it) {
+         mpr x = *it;
+         if (x.end == s.size()) {
+            cout << "perfect" << endl;
+            return 0;
+         }
       }
+
+      cout << "imperfect" << endl;
       return 0;
    }
 
+   /*
    // Grammar for almost perfect strings:
    // A ::= B C B'
    //     | B A B'
@@ -209,5 +337,6 @@ int main() {
    }
 
    cout << "imperfect" << endl;
+   */
    return 0;
 }
